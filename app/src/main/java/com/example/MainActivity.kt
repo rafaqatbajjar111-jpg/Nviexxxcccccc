@@ -620,7 +620,10 @@ fun MainAppContent() {
             }
 
             // Screen 4: Home (Bottom Tab)
-            composable("home") {
+            composable(
+                route = "home",
+                deepLinks = listOf(androidx.navigation.navDeepLink { uriPattern = "https://callback-invexx.web.app" })
+            ) {
                 HomeScreen(navController = navController, viewModel = homeViewModel)
             }
 

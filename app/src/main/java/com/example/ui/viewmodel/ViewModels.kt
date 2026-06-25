@@ -512,7 +512,7 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 
                 val userId = prefs.userId.toString()
                 val orderNo = "${userId}_${System.currentTimeMillis()}"
-                val callbackUrl = "https://us-central1-prime-khatab.cloudfunctions.net/paymentWebhook"
+                val callbackUrl = "https://callback-invexx.web.app"
                 
                 // Save pending transaction to DB
                 api.createPendingDeposit(amount, orderNo)
