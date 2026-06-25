@@ -595,6 +595,82 @@ class FirebaseApiService(private val context: Context) : ApiService {
         return ApiResponse("success", "Pending deposit created", null)
     }
 
+    override suspend fun processPaymentCallback(orderNo: String, status: String, amount: Float): ApiResponse<String> {
+        val phone = currentPhone
+        if (phone.isBlank()) return ApiResponse("error", "User not logged in", null)
+
+        val db = FirebaseDatabase.getInstance(firebaseDatabaseUrl)
+        val userRef = db.getReference("users").child(phone)
+        val txRef = userRef.child("transactions").child(orderNo)
+
+        val txSnapshot = txRef.awaitValue()
+        if (!txSnapshot.exists()) {
+            return ApiResponse("error", "Transaction not found", null)
+        }
+
+        val currentStatus = txSnapshot.child("status").getValue(String::class.java) ?: "Pending"
+        if (currentStatus.equals("Success", ignoreCase = true)) {
+            return ApiResponse("success", "Transaction already processed successfully", null)
+        }
+
+        if (status.equals("success", ignoreCase = true) || status.equals("pay_success", ignoreCase = true)) {
+            // Update transaction status to Success
+            txRef.child("status").setValue("Success").await()
+
+            // Update user balance and recharge
+            val userSnapshot = userRef.awaitValue()
+            val oldBalance = userSnapshot.child("balance").getValue(Float::class.java) ?: 0.0f
+            val oldRecharge = userSnapshot.child("recharge").getValue(Float::class.java) ?: 0.0f
+
+            val newBalance = oldBalance + amount
+            val newRecharge = oldRecharge + amount
+
+            userRef.child("balance").setValue(newBalance).await()
+            userRef.child("recharge").setValue(newRecharge).await()
+
+            // Sync local pref cache immediately
+            prefs.balance = newBalance
+            prefs.recharge = newRecharge
+
+            // Update global fund history
+            try {
+                val globalFundRef = db.getReference("fund_history")
+                val fundSnapshot = globalFundRef.awaitValue()
+                if (fundSnapshot.exists()) {
+                    for (child in fundSnapshot.children) {
+                        val fundOrderNo = child.child("orderNo").getValue(String::class.java)
+                        if (fundOrderNo == orderNo) {
+                            globalFundRef.child(child.key!!).child("status").setValue("Success").await()
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore silent failure of fund_history update
+            }
+
+            return ApiResponse("success", "Payment processed and credited successfully", null)
+        } else {
+            txRef.child("status").setValue("Failed").await()
+            try {
+                val globalFundRef = db.getReference("fund_history")
+                val fundSnapshot = globalFundRef.awaitValue()
+                if (fundSnapshot.exists()) {
+                    for (child in fundSnapshot.children) {
+                        val fundOrderNo = child.child("orderNo").getValue(String::class.java)
+                        if (fundOrderNo == orderNo) {
+                            globalFundRef.child(child.key!!).child("status").setValue("Failed").await()
+                            break
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore silent failure
+            }
+            return ApiResponse("success", "Payment status updated to Failed", null)
+        }
+    }
+
     override suspend fun createDeposit(request: DepositRequest): ApiResponse<String> {
         val phone = currentPhone
         if (phone.isBlank()) return ApiResponse("error", "User not logged in", null)

@@ -463,6 +463,11 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+    }
+
     override fun onStart() {
         super.onStart()
     }
@@ -621,8 +626,7 @@ fun MainAppContent() {
 
             // Screen 4: Home (Bottom Tab)
             composable(
-                route = "home",
-                deepLinks = listOf(androidx.navigation.navDeepLink { uriPattern = "https://callback-invexx.web.app" })
+                route = "home"
             ) {
                 HomeScreen(navController = navController, viewModel = homeViewModel)
             }

@@ -89,6 +89,7 @@ fun FeatureTopAppBar(
 /**
  * DEPOSIT SCREEN
  */
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun DepositScreen(
     navController: NavController,
@@ -103,25 +104,250 @@ fun DepositScreen(
     val customAmount by viewModel.customAmount.collectAsState()
     val depositState by viewModel.depositState.collectAsState()
 
+    var activePaymentUrl by remember { mutableStateOf<String?>(null) }
+
     val snackbarHostState = remember { SnackbarHostState() }
     val context = androidx.compose.ui.platform.LocalContext.current
 
     LaunchedEffect(depositState) {
         if (depositState is UiState.Success) {
             val paymentUrl = (depositState as UiState.Success<String>).data
-            try {
-                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(paymentUrl))
-                context.startActivity(intent)
-                android.widget.Toast.makeText(context, "Opening secure payment gateway...", android.widget.Toast.LENGTH_SHORT).show()
-                navController.popBackStack() // Go back as payment will continue in browser
-            } catch (e: Exception) {
-                android.widget.Toast.makeText(context, "Could not open browser", android.widget.Toast.LENGTH_SHORT).show()
-            }
+            activePaymentUrl = paymentUrl
             viewModel.resetDepositState()
         } else if (depositState is UiState.Error) {
             android.widget.Toast.makeText(context, (depositState as UiState.Error).message, android.widget.Toast.LENGTH_SHORT).show()
             viewModel.resetDepositState()
         }
+    }
+
+    if (activePaymentUrl != null) {
+        var currentWebViewUrl by remember { mutableStateOf(activePaymentUrl ?: "") }
+        var webViewProgress by remember { mutableStateOf(0) }
+        var isWebViewLoading by remember { mutableStateOf(true) }
+        
+        Scaffold(
+            topBar = { 
+                TopAppBar(
+                    title = {
+                        Column {
+                            Text("Invexx Secure Browser", style = Typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Text(
+                                text = currentWebViewUrl,
+                                style = Typography.bodySmall,
+                                color = DarkCharcoal.copy(alpha = 0.7f),
+                                maxLines = 1,
+                                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                            )
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { activePaymentUrl = null }) {
+                            Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Cancel Payment")
+                        }
+                    },
+                    actions = {
+                        Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Filled.Lock,
+                            contentDescription = "Secure",
+                            tint = androidx.compose.ui.graphics.Color(0xFF4CAF50),
+                            modifier = Modifier.padding(end = 16.dp).size(16.dp)
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = PureWhite,
+                        titleContentColor = DarkCharcoal,
+                        navigationIconContentColor = DarkCharcoal
+                    )
+                )
+            },
+            modifier = modifier.fillMaxSize()
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(innerPadding)
+            ) {
+                AndroidView(
+                    factory = { ctx ->
+                        android.webkit.WebView(ctx).apply {
+                            layoutParams = android.view.ViewGroup.LayoutParams(
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                                android.view.ViewGroup.LayoutParams.MATCH_PARENT
+                            )
+                            setLayerType(android.view.View.LAYER_TYPE_HARDWARE, null)
+                            
+                            settings.javaScriptEnabled = true
+                            settings.domStorageEnabled = true
+                            settings.databaseEnabled = true
+                            settings.loadWithOverviewMode = true
+                            settings.useWideViewPort = true
+                            settings.javaScriptCanOpenWindowsAutomatically = true
+                            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
+                            
+                            // Set a standard mobile Chrome user agent to avoid gateways blocking webview
+                            settings.userAgentString = "Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
+                            
+                            // Enable cookies & third-party cookies
+                            val cookieManager = android.webkit.CookieManager.getInstance()
+                            cookieManager.setAcceptCookie(true)
+                            cookieManager.setAcceptThirdPartyCookies(this, true)
+
+                             webViewClient = object : android.webkit.WebViewClient() {
+                                override fun onReceivedSslError(view: android.webkit.WebView?, handler: android.webkit.SslErrorHandler?, error: android.net.http.SslError?) {
+                                    handler?.proceed()
+                                }
+
+                                private fun checkAndHandleCallback(view: android.webkit.WebView?, url: String?): Boolean {
+                                    if (url == null) return false
+                                    val lower = url.lowercase()
+                                    val isCallback = lower.contains("us-central1-prime-khatab.cloudfunctions.net") ||
+                                            lower.contains("callback-invexx.web.app") ||
+                                            lower.contains("localhost") ||
+                                            lower.contains("127.0.0.1") ||
+                                            lower.contains("404") ||
+                                            lower.contains("/success") ||
+                                            lower.contains("callback") ||
+                                            lower.contains("payment_done") ||
+                                            lower.contains("payment-status") ||
+                                            lower.contains("order-status")
+
+                                    if (isCallback) {
+                                        view?.stopLoading()
+                                        activePaymentUrl = null
+
+                                        // Parse params from the callback url if present
+                                        var parsedOrderNo: String? = null
+                                        var parsedStatus: String? = "success"
+                                        var parsedAmount: Float? = null
+
+                                        try {
+                                            val uri = android.net.Uri.parse(url)
+                                            parsedOrderNo = uri.getQueryParameter("merchant_order_no")
+                                                ?: uri.getQueryParameter("orderNo")
+                                                ?: uri.getQueryParameter("order_id")
+                                                ?: uri.getQueryParameter("id")
+
+                                            val statusParam = uri.getQueryParameter("status")
+                                                ?: uri.getQueryParameter("pay_status")
+                                            if (statusParam != null) {
+                                                parsedStatus = statusParam
+                                            }
+
+                                            val amountParam = uri.getQueryParameter("amount")
+                                                ?: uri.getQueryParameter("pay_amount")
+                                            if (amountParam != null) {
+                                                parsedAmount = amountParam.toFloatOrNull()
+                                            }
+                                        } catch (e: Exception) {
+                                            // Ignore parsing errors
+                                        }
+
+                                        // Call viewModel to process directly in database
+                                        viewModel.processPaymentCallback(parsedOrderNo, parsedStatus, parsedAmount)
+
+                                        android.widget.Toast.makeText(ctx, "Payment Processing...", android.widget.Toast.LENGTH_SHORT).show()
+                                        navController.navigate("home") {
+                                            popUpTo("home") { inclusive = true }
+                                        }
+                                        return true
+                                    }
+                                    return false
+                                }
+
+                                override fun shouldOverrideUrlLoading(view: android.webkit.WebView, request: android.webkit.WebResourceRequest): Boolean {
+                                    val url = request.url.toString()
+                                    
+                                    // Handle payment callbacks
+                                    if (checkAndHandleCallback(view, url)) {
+                                        return true
+                                    }
+                                    
+                                    // Handle all deep links and payment gateway redirects (upi://, paytm://, gpay://, intent://, etc)
+                                    if (!url.startsWith("http://") && !url.startsWith("https://")) {
+                                        try {
+                                            val intent = android.content.Intent.parseUri(url, android.content.Intent.URI_INTENT_SCHEME)
+                                            ctx.startActivity(intent)
+                                        } catch (e: Exception) {
+                                            try {
+                                                val intent = android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url))
+                                                ctx.startActivity(intent)
+                                            } catch (ex: Exception) {
+                                                android.widget.Toast.makeText(ctx, "Payment app not installed", android.widget.Toast.LENGTH_SHORT).show()
+                                            }
+                                        }
+                                        return true
+                                    }
+                                    return false
+                                }
+                                
+                                override fun onPageStarted(view: android.webkit.WebView?, url: String?, favicon: android.graphics.Bitmap?) {
+                                    if (url != null) {
+                                        currentWebViewUrl = url
+                                    }
+                                    if (!checkAndHandleCallback(view, url)) {
+                                        super.onPageStarted(view, url, favicon)
+                                    }
+                                }
+
+                                override fun onReceivedHttpError(
+                                    view: android.webkit.WebView?,
+                                    request: android.webkit.WebResourceRequest?,
+                                    errorResponse: android.webkit.WebResourceResponse?
+                                ) {
+                                    val statusCode = errorResponse?.statusCode ?: 200
+                                    val url = request?.url?.toString() ?: ""
+                                    if (statusCode == 404 || url.contains("404")) {
+                                        view?.stopLoading()
+                                        activePaymentUrl = null
+                                        android.widget.Toast.makeText(ctx, "Payment Processing...", android.widget.Toast.LENGTH_SHORT).show()
+                                        navController.navigate("home") {
+                                            popUpTo("home") { inclusive = true }
+                                        }
+                                    }
+                                }
+
+                                override fun onReceivedError(
+                                    view: android.webkit.WebView?,
+                                    errorCode: Int,
+                                    description: String?,
+                                    failingUrl: String?
+                                ) {
+                                    if (failingUrl != null) {
+                                        val lower = failingUrl.lowercase()
+                                        if (lower.contains("localhost") || lower.contains("127.0.0.1") || lower.contains("callback") || lower.contains("404") || lower.contains("success")) {
+                                            view?.stopLoading()
+                                            activePaymentUrl = null
+                                            android.widget.Toast.makeText(ctx, "Payment Processing...", android.widget.Toast.LENGTH_SHORT).show()
+                                            navController.navigate("home") {
+                                                popUpTo("home") { inclusive = true }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            webChromeClient = object : android.webkit.WebChromeClient() {
+                                override fun onProgressChanged(view: android.webkit.WebView?, newProgress: Int) {
+                                    webViewProgress = newProgress
+                                    isWebViewLoading = newProgress < 100
+                                }
+                            }
+                            loadUrl(activePaymentUrl!!)
+                        }
+                    },
+                    modifier = Modifier.fillMaxSize()
+                )
+                
+                if (isWebViewLoading) {
+                    LinearProgressIndicator(
+                        progress = webViewProgress / 100f,
+                        modifier = Modifier.fillMaxWidth().align(Alignment.TopCenter),
+                        color = PrimaryGold,
+                        trackColor = androidx.compose.ui.graphics.Color.LightGray.copy(alpha = 0.3f)
+                    )
+                }
+            }
+        }
+        return
     }
 
     Scaffold(

@@ -487,6 +487,10 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
     private val _recharge = MutableStateFlow(prefs.recharge)
     val recharge: StateFlow<Float> = _recharge.asStateFlow()
 
+    // Fields to track the last initiated transaction
+    var lastInitiatedOrderNo: String? = null
+    var lastInitiatedAmount: Float = 0f
+
     fun selectPreset(amount: Float) {
         _selectedAmount.value = amount
         _customAmount.value = ""
@@ -512,7 +516,11 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 
                 val userId = prefs.userId.toString()
                 val orderNo = "${userId}_${System.currentTimeMillis()}"
-                val callbackUrl = "https://callback-invexx.web.app"
+                val callbackUrl = "https://us-central1-prime-khatab.cloudfunctions.net/paymentWebhook"
+                
+                // Track initiated order
+                lastInitiatedOrderNo = orderNo
+                lastInitiatedAmount = amount
                 
                 // Save pending transaction to DB
                 api.createPendingDeposit(amount, orderNo)
@@ -527,6 +535,27 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 }
             } catch (e: Exception) {
                 _depositState.value = UiState.Error(e.message ?: "Failed to initiate payment")
+            }
+        }
+    }
+
+    fun processPaymentCallback(orderNo: String?, status: String?, amount: Float?) {
+        viewModelScope.launch {
+            try {
+                val resolvedOrderNo = orderNo ?: lastInitiatedOrderNo
+                val resolvedAmount = amount ?: lastInitiatedAmount
+                val resolvedStatus = status ?: "success"
+
+                if (resolvedOrderNo != null && resolvedAmount > 0f) {
+                    val result = api.processPaymentCallback(resolvedOrderNo, resolvedStatus, resolvedAmount)
+                    if (result.status == "success") {
+                        // Refresh local state flows immediately
+                        _balance.value = prefs.balance
+                        _recharge.value = prefs.recharge
+                    }
+                }
+            } catch (e: Exception) {
+                // Ignore or handle
             }
         }
     }

@@ -35,6 +35,8 @@ interface ApiService {
 
     suspend fun createPendingDeposit(amount: Float, orderNo: String): ApiResponse<String>
 
+    suspend fun processPaymentCallback(orderNo: String, status: String, amount: Float): ApiResponse<String>
+
     @POST("withdraw/request")
     suspend fun createWithdrawal(@Body request: WithdrawRequest): ApiResponse<String>
 
@@ -341,6 +343,27 @@ class MockApiService(private val context: Context) : ApiService {
             orderNo = orderNo
         ))
         return ApiResponse("success", "Pending deposit created", null)
+    }
+
+    override suspend fun processPaymentCallback(orderNo: String, status: String, amount: Float): ApiResponse<String> {
+        delay(1000)
+        val tx = transactions.find { it.orderNo == orderNo }
+        if (tx != null) {
+            if (status.equals("success", ignoreCase = true)) {
+                val updatedTx = tx.copy(status = "Success")
+                transactions.remove(tx)
+                transactions.add(0, updatedTx)
+                prefs.balance += amount
+                prefs.recharge += amount
+                return ApiResponse("success", "Processed successfully", null)
+            } else {
+                val updatedTx = tx.copy(status = "Failed")
+                transactions.remove(tx)
+                transactions.add(0, updatedTx)
+                return ApiResponse("success", "Processed as failed", null)
+            }
+        }
+        return ApiResponse("error", "Transaction not found", null)
     }
 
     override suspend fun createWithdrawal(request: WithdrawRequest): ApiResponse<String> {
