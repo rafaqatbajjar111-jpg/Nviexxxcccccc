@@ -1,0 +1,40 @@
+{
+  "project_info": {
+    "project_number": "689440118576",
+    "firebase_url": "https://prime-khatab-default-rtdb.firebaseio.com",
+    "project_id": "prime-khatab",
+    "storage_bucket": "prime-khatab.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:689440118576:android:75a450c3ff21bc59c3daf5",
+        "android_client_info": {
+          "package_name": "com.invexx.web.app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "689440118576-bfijar3rluca25v7k81cps5rd15ih61e.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyADjTWl3FeFS9ND9noe4RP8mUnIIHuyoyE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "689440118576-bfijar3rluca25v7k81cps5rd15ih61e.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

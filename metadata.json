@@ -1,0 +1,8 @@
+{
+  "name": "Remix: Remix: Remix: INVEXX",
+  "description": "A premium investment platform designed to help you invest, earn, and grow wealth with a stylish gold-themed interface.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
