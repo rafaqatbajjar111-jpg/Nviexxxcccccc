@@ -782,7 +782,7 @@ fun WithdrawScreen(
                 InvexxTextField(
                     value = withdrawAmount,
                     onValueChange = { viewModel.updateWithdrawAmount(it) },
-                    hintText = "Minimum withdrawal ₹100",
+                    hintText = "Minimum withdrawal ₹210",
                     leadingIcon = Icons.Default.Lock,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     testTag = "withdraw_amount_input"
@@ -818,7 +818,7 @@ fun WithdrawScreen(
                     Text(
                         "📌 Withdrawal Instructions:\n" +
                         "1. Processing hours: 9 AM to 6 PM daily.\n" +
-                        "2. Minimum payout limit: ₹100.00.\n" +
+                        "2. Minimum payout limit: ₹210.00.\n" +
                         "3. Withdrawals are processed instantly but can take up to 24 hours depending on bank settlement speeds.",
                         style = Typography.bodyMedium.copy(fontSize = 11.sp, color = DarkCharcoal, lineHeight = 16.sp)
                     )

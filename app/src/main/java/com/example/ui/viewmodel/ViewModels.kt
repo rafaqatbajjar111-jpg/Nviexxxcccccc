@@ -694,8 +694,8 @@ class WithdrawViewModel(application: Application) : AndroidViewModel(application
             _withdrawState.value = UiState.Loading
             try {
                 val amt = _withdrawAmount.value.toFloatOrNull()
-                if (amt == null || amt < 100f) {
-                    _withdrawState.value = UiState.Error("Minimum withdrawal amount is ₹100.00")
+                if (amt == null || amt < 210f) {
+                    _withdrawState.value = UiState.Error("Minimum withdrawal amount is ₹210.00")
                     return@launch
                 }
                 if (amt > prefs.earningBalance) {
