@@ -469,9 +469,9 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
     val depositState: StateFlow<UiState<String>> = _depositState.asStateFlow()
 
     // Preset chips
-    val presetAmounts = listOf(100f, 200f, 500f, 1000f, 2000f, 5000f)
+    val presetAmounts = listOf(200f, 500f, 1000f, 2000f, 5000f, 19990f)
 
-    private val _selectedAmount = MutableStateFlow(100f)
+    private val _selectedAmount = MutableStateFlow(200f)
     val selectedAmount: StateFlow<Float> = _selectedAmount.asStateFlow()
 
     private val _customAmount = MutableStateFlow("")
@@ -508,15 +508,20 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             _depositState.value = UiState.Loading
             try {
-                val amount = _selectedAmount.value
-                if (amount <= 0f) {
-                    _depositState.value = UiState.Error("Please enter a valid deposit amount.")
+                // Automatically add ₹10 to user's selected or custom amount
+                val amount = _selectedAmount.value + 10f
+                if (amount < 210f) {
+                    _depositState.value = UiState.Error("Minimum deposit is ₹210 (including ₹10 auto-addition).")
+                    return@launch
+                }
+                if (amount > 20000f) {
+                    _depositState.value = UiState.Error("Maximum deposit is ₹20,000.")
                     return@launch
                 }
                 
                 val userId = prefs.userId.toString()
                 val orderNo = "${userId}_${System.currentTimeMillis()}"
-                val callbackUrl = "https://us-central1-prime-khatab.cloudfunctions.net/paymentWebhook"
+                val callbackUrl = "https://prime-khatab-default-rtdb.firebaseio.com/payment_callbacks.json"
                 
                 // Track initiated order
                 lastInitiatedOrderNo = orderNo
@@ -528,11 +533,7 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 val watchPaysApi = WatchPaysApi()
                 val paymentUrl = watchPaysApi.createOrder(amount.toDouble(), orderNo, callbackUrl)
                 
-                if (paymentUrl != null) {
-                    _depositState.value = UiState.Success(paymentUrl)
-                } else {
-                    _depositState.value = UiState.Error("Failed to initiate payment. Please try again.")
-                }
+                _depositState.value = UiState.Success(paymentUrl)
             } catch (e: Exception) {
                 _depositState.value = UiState.Error(e.message ?: "Failed to initiate payment")
             }

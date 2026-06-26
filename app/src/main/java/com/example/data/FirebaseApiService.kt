@@ -1163,9 +1163,21 @@ class FirebaseApiService(private val context: Context) : ApiService {
         if (phone.isBlank()) return ApiResponse("error", "User not logged in", null)
 
         val globalDbRef = FirebaseDatabase.getInstance(firebaseDatabaseUrl).getReference("tasks")
-        val globalSnapshot = globalDbRef.awaitValue()
+        var globalSnapshot = globalDbRef.awaitValue()
         val globalTasks = mutableListOf<TaskModel>()
         
+        if (!globalSnapshot.exists() || !globalSnapshot.hasChildren()) {
+            val initialGlobalTasks = listOf(
+                TaskModel(1, "Daily Check-In", "Get daily active login rewards", 0.0f, isClaimed = false, isClaimable = false, 5.00f),
+                TaskModel(2, "Invite 1 Friend", "Invite a friend to register and deposit", 0.0f, isClaimed = false, isClaimable = false, 50.00f),
+                TaskModel(3, "First Investment", "Purchase your first investment plan", 0.0f, isClaimed = false, isClaimable = false, 10.00f)
+            )
+            for (task in initialGlobalTasks) {
+                globalDbRef.child(task.id.toString()).setValue(task).await()
+            }
+            globalSnapshot = globalDbRef.awaitValue()
+        }
+
         if (globalSnapshot.exists()) {
             for (child in globalSnapshot.children) {
                 val tid = child.child("id").getValue(Int::class.java) ?: 0
@@ -1177,8 +1189,16 @@ class FirebaseApiService(private val context: Context) : ApiService {
         }
 
         val dbRef = FirebaseDatabase.getInstance(firebaseDatabaseUrl).getReference("users").child(phone).child("tasks")
-        val snapshot = dbRef.awaitValue()
+        var snapshot = dbRef.awaitValue()
         val userTasksMap = mutableMapOf<Int, TaskModel>()
+
+        if (!snapshot.exists() || !snapshot.hasChildren()) {
+            val defaultUserTasks = globalTasks.map { 
+                it.copy(progress = 0f, isClaimed = false, isClaimable = false)
+            }
+            dbRef.setValue(defaultUserTasks).await()
+            snapshot = dbRef.awaitValue()
+        }
 
         if (snapshot.exists()) {
             for (child in snapshot.children) {
@@ -1211,7 +1231,13 @@ class FirebaseApiService(private val context: Context) : ApiService {
         val dbRef = FirebaseDatabase.getInstance(firebaseDatabaseUrl).getReference("users").child(phone)
         val snapshot = dbRef.awaitValue()
 
-        val tasksSnapshot = snapshot.child("tasks")
+        var tasksSnapshot = snapshot.child("tasks")
+        if (!tasksSnapshot.exists() || !tasksSnapshot.hasChildren()) {
+            getTasks() // This seeds both global and user tasks
+            val updatedSnapshot = dbRef.awaitValue()
+            tasksSnapshot = updatedSnapshot.child("tasks")
+        }
+
         val tasksList = mutableListOf<TaskModel>()
         var foundCheckIn = false
 
@@ -1252,7 +1278,13 @@ class FirebaseApiService(private val context: Context) : ApiService {
         val dbRef = FirebaseDatabase.getInstance(firebaseDatabaseUrl).getReference("users").child(phone)
         val snapshot = dbRef.awaitValue()
 
-        val tasksSnapshot = snapshot.child("tasks")
+        var tasksSnapshot = snapshot.child("tasks")
+        if (!tasksSnapshot.exists() || !tasksSnapshot.hasChildren()) {
+            getTasks() // This seeds both global and user tasks
+            val updatedSnapshot = dbRef.awaitValue()
+            tasksSnapshot = updatedSnapshot.child("tasks")
+        }
+
         val tasksList = mutableListOf<TaskModel>()
         var reward = 0f
         var taskTitle = ""

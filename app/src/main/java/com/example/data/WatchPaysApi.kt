@@ -53,37 +53,42 @@ class WatchPaysApi {
         amount: Double,
         orderNo: String,
         callbackUrl: String
-    ): String? = withContext(Dispatchers.IO) {
-        try {
-            val amountStr = DecimalFormat("0.00").format(amount)
-            val signature = WatchPaysSigner.generateSignature(amountStr, orderNo, callbackUrl)
+    ): String = withContext(Dispatchers.IO) {
+        val amountStr = String.format(java.util.Locale.US, "%.2f", amount)
+        val signature = WatchPaysSigner.generateSignature(amountStr, orderNo, callbackUrl)
 
-            val body = JSONObject().apply {
-                put("merchant_id", "100555375")
-                put("api_key", "de6dd0d15c1d3cf6eb846870fe9f9c8c")
-                put("amount", amountStr)
-                put("merchant_order_no", orderNo)
-                put("callback_url", callbackUrl)
-                put("signature", signature)
+        val body = JSONObject().apply {
+            put("merchant_id", "100555375")
+            put("api_key", "de6dd0d15c1d3cf6eb846870fe9f9c8c")
+            put("amount", amountStr)
+            put("merchant_order_no", orderNo)
+            put("callback_url", callbackUrl)
+            put("signature", signature)
+        }
+
+        val request = Request.Builder()
+            .url("https://api.watchpays.com/v1/create")
+            .post(body.toString().toRequestBody(jsonMediaType))
+            .build()
+
+        val response = client.newCall(request).execute()
+        val responseBodyStr = response.body?.string() ?: "{}"
+        
+        if (!response.isSuccessful) {
+            throw Exception("HTTP Error ${response.code}: $responseBodyStr")
+        }
+
+        val json = JSONObject(responseBodyStr)
+
+        if (json.optBoolean("success")) {
+            val payUrl = json.optString("payment_url")
+            if (payUrl.isNullOrBlank()) {
+                throw Exception("Payment URL is empty in success response")
             }
-
-            val request = Request.Builder()
-                .url("https://api.watchpays.com/v1/create")
-                .post(body.toString().toRequestBody(jsonMediaType))
-                .build()
-
-            val response = client.newCall(request).execute()
-            val json = JSONObject(response.body?.string() ?: "{}")
-
-            if (json.optBoolean("success")) {
-                json.optString("payment_url")
-            } else {
-                val msg = json.optString("message", json.optString("status", "unknown"))
-                throw Exception("Payment failed: $msg")
-            }
-        } catch (e: Exception) {
-            e.printStackTrace()
-            null
+            payUrl
+        } else {
+            val msg = json.optString("message", json.optString("status", "unknown"))
+            throw Exception("Payment failed: $msg")
         }
     }
 }

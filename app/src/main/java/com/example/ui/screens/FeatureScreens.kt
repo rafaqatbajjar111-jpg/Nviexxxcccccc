@@ -201,6 +201,7 @@ fun DepositScreen(
                                     if (url == null) return false
                                     val lower = url.lowercase()
                                     val isCallback = lower.contains("us-central1-prime-khatab.cloudfunctions.net") ||
+                                            lower.contains("prime-khatab-default-rtdb.firebaseio.com") ||
                                             lower.contains("callback-invexx.web.app") ||
                                             lower.contains("localhost") ||
                                             lower.contains("127.0.0.1") ||
@@ -449,14 +450,22 @@ fun DepositScreen(
 
             // Custom Amount Input
             item {
-                InvexxTextField(
-                    value = customAmount,
-                    onValueChange = { viewModel.setCustomAmount(it) },
-                    hintText = "Enter custom amount (₹)",
-                    leadingIcon = Icons.Default.Lock, // Rupee indicator fallback
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    testTag = "deposit_amount_input"
-                )
+                Column {
+                    InvexxTextField(
+                        value = customAmount,
+                        onValueChange = { viewModel.setCustomAmount(it) },
+                        hintText = "Enter custom amount (₹)",
+                        leadingIcon = Icons.Default.Lock, // Rupee indicator fallback
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        testTag = "deposit_amount_input"
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text(
+                        text = "Note: ₹10 will be added automatically to the entered/selected amount.",
+                        style = Typography.labelSmall.copy(color = PrimaryGold),
+                        modifier = Modifier.padding(start = 4.dp)
+                    )
+                }
             }
 
             // UPI Payment option card
@@ -502,7 +511,7 @@ fun DepositScreen(
             item {
                 Spacer(modifier = Modifier.height(12.dp))
                 InvexxButton(
-                    text = "Pay Now",
+                    text = "Pay Now (₹${(selectedAmount + 10f).toInt()})",
                     onClick = { viewModel.initiateDeposit() },
                     modifier = Modifier.fillMaxWidth(),
                     enabled = depositState !is UiState.Loading,
