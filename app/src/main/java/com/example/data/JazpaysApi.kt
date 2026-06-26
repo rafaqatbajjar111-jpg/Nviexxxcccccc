@@ -8,21 +8,21 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
 import java.security.MessageDigest
-import java.text.DecimalFormat
 import java.util.concurrent.TimeUnit
 
 // ===============================================================
-// 1. SIGNATURE GENERATION
+// 1. JAZPAYS SIGNATURE GENERATION
 // ===============================================================
-object WatchPaysSigner {
-    private const val MERCHANT_ID = "100555375"
-    private const val API_KEY = "de6dd0d15c1d3cf6eb846870fe9f9c8c"
+object JazpaysSigner {
+    private const val MERCHANT_ID = "100222099"
+    private const val API_KEY = "25aa23a6200008a506628fa5f971fc1d"
 
     fun generateSignature(
         amount: String,
         merchantOrderNo: String,
         callbackUrl: String
     ): String {
+        // Collect parameters
         val params = sortedMapOf(
             "amount" to amount,
             "callback_url" to callbackUrl,
@@ -30,6 +30,8 @@ object WatchPaysSigner {
             "merchant_order_no" to merchantOrderNo
         )
 
+        // Sort alphabetically by key (ascending) and construct: key1=value1&key2=value2&...
+        // The last element also has an '&' before appending key=YOUR_API_KEY
         val signStr = params.entries.joinToString("") { "${it.key}=${it.value}&" } + "key=$API_KEY"
 
         val digest = MessageDigest.getInstance("MD5")
@@ -39,9 +41,9 @@ object WatchPaysSigner {
 }
 
 // ===============================================================
-// 2. API CALL
+// 2. JAZPAYS API CALL
 // ===============================================================
-class WatchPaysApi {
+class JazpaysApi {
     private val client = OkHttpClient.Builder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(30, TimeUnit.SECONDS)
@@ -55,11 +57,11 @@ class WatchPaysApi {
         callbackUrl: String
     ): String = withContext(Dispatchers.IO) {
         val amountStr = String.format(java.util.Locale.US, "%.2f", amount)
-        val signature = WatchPaysSigner.generateSignature(amountStr, orderNo, callbackUrl)
+        val signature = JazpaysSigner.generateSignature(amountStr, orderNo, callbackUrl)
 
         val body = JSONObject().apply {
-            put("merchant_id", "100555375")
-            put("api_key", "de6dd0d15c1d3cf6eb846870fe9f9c8c")
+            put("merchant_id", "100222099")
+            put("api_key", "25aa23a6200008a506628fa5f971fc1d")
             put("amount", amountStr)
             put("merchant_order_no", orderNo)
             put("callback_url", callbackUrl)
@@ -67,7 +69,7 @@ class WatchPaysApi {
         }
 
         val request = Request.Builder()
-            .url("https://api.watchpays.com/v1/create")
+            .url("https://api.jazpays.com/v1/create")
             .post(body.toString().toRequestBody(jsonMediaType))
             .build()
 
@@ -80,15 +82,21 @@ class WatchPaysApi {
 
         val json = JSONObject(responseBodyStr)
 
-        if (json.optBoolean("success")) {
+        // Support standard success boolean, "success" status string, or simply having a valid payment_url
+        val isSuccess = json.optBoolean("success", false) || 
+                        json.optString("status").lowercase() == "success" || 
+                        json.optString("success").lowercase() == "true" ||
+                        json.has("payment_url")
+
+        if (isSuccess) {
             val payUrl = json.optString("payment_url")
             if (payUrl.isNullOrBlank()) {
-                throw Exception("Payment URL is empty in success response")
+                throw Exception("Payment URL is empty in response")
             }
             payUrl
         } else {
             val msg = json.optString("message", json.optString("status", "unknown"))
-            throw Exception("Payment failed: $msg")
+            throw Exception("Payment initiation failed: $msg")
         }
     }
 }

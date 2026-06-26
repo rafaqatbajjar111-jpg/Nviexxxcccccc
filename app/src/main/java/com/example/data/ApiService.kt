@@ -65,6 +65,8 @@ interface ApiService {
     @GET("notifications")
     suspend fun getNotifications(): ApiResponse<List<NotificationModel>>
 
+    fun getPaymentCallbacksFlow(): kotlinx.coroutines.flow.Flow<List<Map<String, Any>>>
+
     @POST("notifications/read-all")
     suspend fun markNotificationsAsRead(): ApiResponse<String>
 
@@ -656,6 +658,20 @@ class MockApiService(private val context: Context) : ApiService {
                 "referralCode" to prefs.referralCode
             )
             emit(map)
+        }
+    }
+
+    override fun getPaymentCallbacksFlow(): kotlinx.coroutines.flow.Flow<List<Map<String, Any>>> {
+        return kotlinx.coroutines.flow.flow {
+            emit(listOf(
+                mapOf(
+                    "id" to "123_mock_order",
+                    "merchant_order_no" to "12345_1719363000",
+                    "status" to "success",
+                    "amount" to 1000.0,
+                    "signature" to "mock_signature_123"
+                )
+            ))
         }
     }
 }

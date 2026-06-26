@@ -967,6 +967,34 @@ class FirebaseApiService(private val context: Context) : ApiService {
         awaitClose { dbRef.removeEventListener(listener) }
     }
 
+    override fun getPaymentCallbacksFlow(): kotlinx.coroutines.flow.Flow<List<Map<String, Any>>> = 
+        kotlinx.coroutines.flow.callbackFlow {
+        val dbRef = FirebaseDatabase.getInstance(firebaseDatabaseUrl).getReference("payment_callbacks")
+        val listener = object : com.google.firebase.database.ValueEventListener {
+            override fun onDataChange(snapshot: com.google.firebase.database.DataSnapshot) {
+                val list = mutableListOf<Map<String, Any>>()
+                if (snapshot.exists()) {
+                    for (child in snapshot.children) {
+                        val map = mutableMapOf<String, Any>()
+                        map["id"] = child.key ?: ""
+                        for (grandChild in child.children) {
+                            val value = grandChild.value
+                            if (value != null) {
+                                map[grandChild.key!!] = value
+                            }
+                        }
+                        list.add(map)
+                    }
+                }
+                list.reverse()
+                trySend(list)
+            }
+            override fun onCancelled(error: com.google.firebase.database.DatabaseError) {}
+        }
+        dbRef.addValueEventListener(listener)
+        awaitClose { dbRef.removeEventListener(listener) }
+    }
+
     override fun getUserProfileFlow(): kotlinx.coroutines.flow.Flow<Map<String, Any>> = 
         kotlinx.coroutines.flow.callbackFlow {
         val phone = currentPhone

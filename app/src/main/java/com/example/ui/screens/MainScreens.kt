@@ -1293,6 +1293,7 @@ fun MineScreen(
                 Pair("fund_history", "fundHistory"),
                 Pair("gift_code", "giftCode"),
                 Pair("task", "task"),
+                Pair("payment_callbacks", "paymentCallbacks"),
                 Pair("support", "support"),
                 Pair("settings", "settings"),
                 Pair("about_invexx", "about")
@@ -1305,6 +1306,7 @@ fun MineScreen(
                     "fund_history" -> Icons.Default.ReceiptLong
                     "gift_code" -> Icons.Default.CardGiftcard
                     "task" -> Icons.Default.Assignment
+                    "payment_callbacks" -> Icons.Default.ReceiptLong
                     "support" -> Icons.Default.Headset
                     "settings" -> Icons.Default.Settings
                     else -> Icons.Default.Info

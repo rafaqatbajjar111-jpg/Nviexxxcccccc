@@ -521,7 +521,7 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 
                 val userId = prefs.userId.toString()
                 val orderNo = "${userId}_${System.currentTimeMillis()}"
-                val callbackUrl = "https://prime-khatab-default-rtdb.firebaseio.com/payment_callbacks.json"
+                val callbackUrl = "https://prime-khatab-default-rtdb.firebaseio.com/payment_callbacks/$orderNo.json"
                 
                 // Track initiated order
                 lastInitiatedOrderNo = orderNo
@@ -530,8 +530,8 @@ class DepositViewModel(application: Application) : AndroidViewModel(application)
                 // Save pending transaction to DB
                 api.createPendingDeposit(amount, orderNo)
                 
-                val watchPaysApi = WatchPaysApi()
-                val paymentUrl = watchPaysApi.createOrder(amount.toDouble(), orderNo, callbackUrl)
+                val jazpaysApi = JazpaysApi()
+                val paymentUrl = jazpaysApi.createOrder(amount.toDouble(), orderNo, callbackUrl)
                 
                 _depositState.value = UiState.Success(paymentUrl)
             } catch (e: Exception) {
@@ -760,6 +760,9 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
     private val _notifications = MutableStateFlow<UiState<List<NotificationModel>>>(UiState.Loading)
     val notifications: StateFlow<UiState<List<NotificationModel>>> = _notifications.asStateFlow()
 
+    private val _paymentCallbacks = MutableStateFlow<UiState<List<Map<String, Any>>>>(UiState.Loading)
+    val paymentCallbacks: StateFlow<UiState<List<Map<String, Any>>>> = _paymentCallbacks.asStateFlow()
+
     private val _redeemState = MutableStateFlow<UiState<String>>(UiState.Idle)
     val redeemState: StateFlow<UiState<String>> = _redeemState.asStateFlow()
 
@@ -785,6 +788,19 @@ class ListsViewModel(application: Application) : AndroidViewModel(application) {
                 }
             } catch (e: Exception) {
                 _transactions.value = UiState.Error(e.message ?: "Failed to load transactions")
+            }
+        }
+    }
+
+    fun loadPaymentCallbacks() {
+        viewModelScope.launch {
+            _paymentCallbacks.value = UiState.Loading
+            try {
+                api.getPaymentCallbacksFlow().collect { list ->
+                    _paymentCallbacks.value = UiState.Success(list)
+                }
+            } catch (e: Exception) {
+                _paymentCallbacks.value = UiState.Error(e.message ?: "Failed to load payment callbacks")
             }
         }
     }

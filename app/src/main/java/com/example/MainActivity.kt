@@ -49,6 +49,9 @@ import com.example.ui.components.*
 import androidx.compose.material.icons.filled.*
 import com.example.ui.utils.tr
 import com.example.data.PreferenceManager
+import com.example.data.ServiceLocator
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import androidx.biometric.BiometricPrompt
 import androidx.biometric.BiometricManager
 import androidx.compose.ui.Alignment
@@ -74,6 +77,7 @@ class MainActivity : FragmentActivity() {
     private var announcementsListener: ChildEventListener? = null
     private var plansListener: ChildEventListener? = null
     private var blogsListener: ChildEventListener? = null
+    private var paymentCallbacksListener: ChildEventListener? = null
     private val prefChangeListener = android.content.SharedPreferences.OnSharedPreferenceChangeListener { _, key ->
         if (key == "phone_number" || key == "phone" || key == "key_phone" || key == "user_phone") {
             startFirebaseNotificationListeners()
@@ -360,6 +364,22 @@ class MainActivity : FragmentActivity() {
             }
             override fun onCancelled(error: DatabaseError) {}
         })
+
+        // 5. Listen for successful payment callbacks to automatically credit deposits
+        val paymentCallbacksRef = FirebaseDatabase.getInstance(databaseUrl).getReference("payment_callbacks")
+        val pCbListener = object : ChildEventListener {
+            override fun onChildAdded(snapshot: DataSnapshot, previousChildName: String?) {
+                handlePaymentCallbackSnapshot(snapshot)
+            }
+            override fun onChildChanged(snapshot: DataSnapshot, previousChildName: String?) {
+                handlePaymentCallbackSnapshot(snapshot)
+            }
+            override fun onChildRemoved(snapshot: DataSnapshot) {}
+            override fun onChildMoved(snapshot: DataSnapshot, previousChildName: String?) {}
+            override fun onCancelled(error: DatabaseError) {}
+        }
+        paymentCallbacksRef.addChildEventListener(pCbListener)
+        paymentCallbacksListener = pCbListener
     }
 
     private fun stopFirebaseNotificationListeners() {
@@ -407,6 +427,15 @@ class MainActivity : FragmentActivity() {
         } catch (e: Exception) {}
         blogsListener = null
         announcementsListener = null
+
+        try {
+            paymentCallbacksListener?.let {
+                FirebaseDatabase.getInstance(databaseUrl)
+                    .getReference("payment_callbacks")
+                    .removeEventListener(it)
+            }
+        } catch (e: Exception) {}
+        paymentCallbacksListener = null
     }
 
     override fun onDestroy() {
@@ -466,6 +495,45 @@ class MainActivity : FragmentActivity() {
     override fun onNewIntent(intent: android.content.Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+    }
+
+    private fun handlePaymentCallbackSnapshot(snapshot: DataSnapshot) {
+        val prefs = PreferenceManager(this)
+        val userId = prefs.userId.toString()
+        if (userId.isBlank()) return
+
+        val orderNo = snapshot.key ?: return
+        
+        val merchantOrder = snapshot.child("merchant_order_no").getValue(String::class.java)
+            ?: snapshot.child("merchantOrder").getValue(String::class.java)
+            ?: snapshot.child("orderNo").getValue(String::class.java)
+            ?: orderNo
+
+        if (merchantOrder.startsWith("${userId}_")) {
+            val status = snapshot.child("status").getValue(String::class.java) ?: ""
+            val amountVal = snapshot.child("amount").getValue(Double::class.java)
+                ?: snapshot.child("amount").getValue(Float::class.java)?.toDouble()
+                ?: snapshot.child("amount").getValue(String::class.java)?.toDoubleOrNull()
+                ?: 0.0
+
+            if (status.equals("success", ignoreCase = true)) {
+                val apiService = ServiceLocator.getApiService(this@MainActivity)
+                lifecycleScope.launch {
+                    try {
+                        val result = apiService.processPaymentCallback(merchantOrder, "success", amountVal.toFloat())
+                        if (result.status == "success") {
+                            com.example.ui.utils.PushNotificationManager.showNotification(
+                                this@MainActivity,
+                                "Recharge Successful! 🎉",
+                                "Your deposit of ₹${amountVal} for order $merchantOrder was processed automatically!"
+                            )
+                        }
+                    } catch (e: Exception) {
+                        // ignore
+                    }
+                }
+            }
+        }
     }
 
     override fun onStart() {
@@ -708,6 +776,11 @@ fun MainAppContent() {
             // Screen 19: About Page
             composable("about") {
                 AboutScreen(navController = navController)
+            }
+
+            // Screen 20: Payment Callbacks
+            composable("paymentCallbacks") {
+                com.example.ui.screens.PaymentCallbacksScreen(navController = navController, viewModel = listsViewModel)
             }
         }
     }

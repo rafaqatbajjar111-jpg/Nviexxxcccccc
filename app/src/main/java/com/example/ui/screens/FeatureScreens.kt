@@ -105,9 +105,26 @@ fun DepositScreen(
     val depositState by viewModel.depositState.collectAsState()
 
     var activePaymentUrl by remember { mutableStateOf<String?>(null) }
+    var initialRecharge by remember { mutableStateOf(recharge) }
 
     val snackbarHostState = remember { SnackbarHostState() }
     val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(activePaymentUrl) {
+        if (activePaymentUrl != null) {
+            initialRecharge = recharge
+        }
+    }
+
+    LaunchedEffect(recharge) {
+        if (activePaymentUrl != null && recharge > initialRecharge) {
+            android.widget.Toast.makeText(context, "Payment verified successfully! ₹${recharge - initialRecharge} added to balance.", android.widget.Toast.LENGTH_LONG).show()
+            activePaymentUrl = null
+            navController.navigate("home") {
+                popUpTo("home") { inclusive = true }
+            }
+        }
+    }
 
     LaunchedEffect(depositState) {
         if (depositState is UiState.Success) {
@@ -203,6 +220,8 @@ fun DepositScreen(
                                     val isCallback = lower.contains("us-central1-prime-khatab.cloudfunctions.net") ||
                                             lower.contains("prime-khatab-default-rtdb.firebaseio.com") ||
                                             lower.contains("callback-invexx.web.app") ||
+                                            lower.contains("jazpays.com") ||
+                                            lower.contains("jazpays") ||
                                             lower.contains("localhost") ||
                                             lower.contains("127.0.0.1") ||
                                             lower.contains("404") ||
@@ -1154,6 +1173,218 @@ fun NotificationScreen(
                                         notif.date,
                                         style = Typography.labelSmall.copy(fontSize = 10.sp)
                                     )
+                                }
+                            }
+                        }
+                    }
+                }
+                else -> {}
+            }
+        }
+    }
+}
+
+/**
+ * PAYMENT CALLBACKS LOG VIEW
+ */
+@Composable
+fun PaymentCallbacksScreen(
+    navController: NavController,
+    viewModel: ListsViewModel,
+    modifier: Modifier = Modifier
+) {
+    val callbacksState by viewModel.paymentCallbacks.collectAsState()
+    var searchQuery by remember { mutableStateOf("") }
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.loadPaymentCallbacks()
+    }
+
+    Scaffold(
+        topBar = { FeatureTopAppBar("Payment Callbacks", navController) },
+        containerColor = SoftBackground,
+        modifier = modifier.fillMaxSize()
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(innerPadding)
+        ) {
+            // Search Input
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                placeholder = { Text("Search by ID or Merchant Order...") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null, tint = MediumGray) },
+                singleLine = true,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+
+            when (callbacksState) {
+                is UiState.Loading -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(color = PrimaryGold)
+                    }
+                }
+                is UiState.Error -> {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(Icons.Default.Info, contentDescription = null, tint = Color.Red, modifier = Modifier.size(48.dp))
+                            Spacer(modifier = Modifier.height(8.dp))
+                            Text("Failed to load logs", fontWeight = FontWeight.Bold)
+                            Text((callbacksState as UiState.Error).message, color = MediumGray, fontSize = 13.sp)
+                        }
+                    }
+                }
+                is UiState.Success -> {
+                    val list = (callbacksState as UiState.Success<List<Map<String, Any>>>).data
+                    val filteredList = if (searchQuery.isBlank()) {
+                        list
+                    } else {
+                        list.filter { entry ->
+                            val id = entry["id"]?.toString() ?: ""
+                            val merchantOrder = entry["merchant_order_no"]?.toString() ?: entry["merchantOrder"]?.toString() ?: ""
+                            id.contains(searchQuery, ignoreCase = true) || merchantOrder.contains(searchQuery, ignoreCase = true)
+                        }
+                    }
+
+                    if (filteredList.isEmpty()) {
+                        Box(
+                            modifier = Modifier.fillMaxSize(),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                                Icon(Icons.Default.Info, contentDescription = null, tint = MediumGray, modifier = Modifier.size(48.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text("No payment callbacks found", fontWeight = FontWeight.Bold, color = MediumGray)
+                            }
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            contentPadding = PaddingValues(bottom = 32.dp)
+                        ) {
+                            items(filteredList) { entry ->
+                                val id = entry["id"]?.toString() ?: ""
+                                val merchantOrder = entry["merchant_order_no"]?.toString() 
+                                    ?: entry["merchantOrder"]?.toString() 
+                                    ?: entry["orderNo"]?.toString() 
+                                    ?: ""
+                                val amount = entry["amount"]?.toString() ?: "0.0"
+                                val status = entry["status"]?.toString() ?: "pending"
+                                val signature = entry["signature"]?.toString() ?: entry["sign"]?.toString() ?: ""
+
+                                InvexxCard(borderRadius = 16.dp, padding = 16.dp) {
+                                    Column(modifier = Modifier.fillMaxWidth()) {
+                                        // Header row: ID & Status Badge
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Callback ID: $id",
+                                                style = Typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                                                modifier = Modifier.weight(1f)
+                                            )
+                                            
+                                            // Status badge
+                                            val isSuccess = status.equals("success", ignoreCase = true) || status.equals("pay_success", ignoreCase = true)
+                                            val badgeBg = if (isSuccess) Color(0xFFE8F5E9) else Color(0xFFFFF3E0)
+                                            val badgeColor = if (isSuccess) Color(0xFF2E7D32) else Color(0xFFE65100)
+                                            
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(badgeBg)
+                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                            ) {
+                                                Text(
+                                                    text = status.uppercase(),
+                                                    style = Typography.labelSmall.copy(color = badgeColor, fontWeight = FontWeight.ExtraBold)
+                                                )
+                                            }
+                                        }
+
+                                        HorizontalDivider(color = LightGrayBorder)
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // Merchant Order
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text("Merchant Order", style = Typography.labelSmall, color = MediumGray)
+                                                Text(
+                                                    text = merchantOrder.ifBlank { "N/A" },
+                                                    style = Typography.bodyMedium.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace)
+                                                )
+                                            }
+                                            if (merchantOrder.isNotBlank()) {
+                                                IconButton(onClick = {
+                                                    val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                                    val clip = android.content.ClipData.newPlainText("Merchant Order", merchantOrder)
+                                                    clipboard.setPrimaryClip(clip)
+                                                    android.widget.Toast.makeText(context, "Copied Order No", android.widget.Toast.LENGTH_SHORT).show()
+                                                }) {
+                                                    Icon(Icons.Default.ContentCopy, contentDescription = "Copy", tint = PrimaryGold, modifier = Modifier.size(16.dp))
+                                                }
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.height(10.dp))
+
+                                        // Amount & Signature
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column {
+                                                Text("Amount", style = Typography.labelSmall, color = MediumGray)
+                                                Text("₹$amount", style = Typography.titleMedium.copy(color = PrimaryGold, fontWeight = FontWeight.Bold))
+                                            }
+
+                                            if (signature.isNotBlank()) {
+                                                Column(horizontalAlignment = Alignment.End) {
+                                                    Text("Signature", style = Typography.labelSmall, color = MediumGray)
+                                                    Text(
+                                                        text = if (signature.length > 10) signature.take(10) + "..." else signature,
+                                                        style = Typography.bodySmall.copy(color = MediumGray)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        
+                                        // Other Raw Keys display
+                                        val otherKeys = entry.keys.filter { it != "id" && it != "merchant_order_no" && it != "merchantOrder" && it != "orderNo" && it != "amount" && it != "status" && it != "signature" && it != "sign" }
+                                        if (otherKeys.isNotEmpty()) {
+                                            Spacer(modifier = Modifier.height(10.dp))
+                                            Text("Raw Payload Detail", style = Typography.labelSmall.copy(fontWeight = FontWeight.Bold), color = MediumGray)
+                                            otherKeys.forEach { key ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.SpaceBetween
+                                                ) {
+                                                    Text(key, style = Typography.labelSmall.copy(fontSize = 11.sp), color = MediumGray)
+                                                    Text(entry[key].toString(), style = Typography.bodySmall.copy(fontSize = 11.sp))
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
